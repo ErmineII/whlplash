@@ -67,6 +67,10 @@ It should probably be 2d to fit the theme.
 
 Probably not.
 
+### Wrapping
+
+Horizontal wrapping, but errors instead of vertical wrapping.
+
 ## Examples #######
 
 ```js
