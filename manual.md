@@ -2,6 +2,8 @@
 
 https://chat.stackexchange.com/rooms/123064/whlplash
 
+https://github.com/ErmineII/whlplash
+
 [toc]
 
 ## Commands #######
@@ -36,7 +38,7 @@ https://chat.stackexchange.com/rooms/123064/whlplash
 |   |`J`| conditional absolute jump
 |   |`*`| top-of-the-stack times repeat next instr
 |   |`@`| return if true
-|   |*d*| if *d* is in `{}MW` (`{}^v`?) turn `<>^v` respectively
+|   |*d*| if *d* is in `{}^v` turn `<>^v` respectively if the top of the stack is true
 |   |`|`| or
 |   |`&`| and
 |   |`X`| xor
@@ -45,10 +47,19 @@ https://chat.stackexchange.com/rooms/123064/whlplash
 |   |`,`| output as character
 |   | ? | system command
 |`~`|   | **Stack manipulation**
-|   |`:`| dup
-|   |`~`| swap
-|   | ? | rot drop over nip tuck [etc.](http://wiki.laptop.org/go/Forth_stack_operators)
-|` `|*a*| Define the function *a*. When *a* is called, the ip jumps to this place and continues on until it reaches a return instruction.
+|   |`:`| dup `( a -- a a )`
+|   |`~`| swap/exch `( a b -- b a )`
+|   |`r`| rot `( a b c -- b c a )`
+|   |`R`| -rot `( a b c -- c a b )`
+|   |`o`| over `( a b -- a b a )`
+|   |`t`| tuck `( a b -- b a b )`
+|   | ? | [others?](http://wiki.laptop.org/go/Forth_stack_operators)
+|`:`|   | **Array commands**
+|   |`+`| append 2 arrays
+|   |`@`| popping `I` then `A` push `A[I]`
+|   |`!`| pops an array, index, and value and sets the value at the index in the array (I'm not sure of the order on the stack)
+|   |`]`| pops `N` and collects the top `N` stack elements into an array
+|`'`|*c*| Push the literal character *c*
 
 ## Questions ######
 
@@ -73,9 +84,14 @@ Horizontal wrapping, but errors instead of vertical wrapping.
 
 ## Examples #######
 
-```js
- F.>~:?!?W?:01+- F.+*.@
-    .@01.< not that long
-
+Factorial
+```
+.>~:?!?v?:01+- F.+*.@  the " F"
+  .@01.<
 ```
 
+Fibonacci: `(a b n -- fibonacci(n))` where `a` and `b` are `0` and `1` respectively for the normal sequence.
+```
+~:00?=?v~:01?=?v~R~t++~r
+.@~$~$.<  ~r  .<
+```
