@@ -1,5 +1,7 @@
 
-datatype Value = N of int | Arr of Value vector
+load "Real";
+
+datatype Value = N of real | Arr of Value vector
 type Stack = Value list
 
 datatype Dir = UP | DOWN | LEFT | RIGHT
@@ -7,6 +9,8 @@ type Field = string vector
 
 type State = {s: Stack, x: int, y: int, d: Dir, f: Field}
 exception WhlplashE of string
+
+datatype Update = Change of State | Return of State
 
 fun advance {s, x, y, d, f} =
   { s=s, d=d, f=f
@@ -33,38 +37,57 @@ fun advance {s, x, y, d, f} =
     }
   end
 
-fun strvec_coords x y f = String.sub(Vector.sub(f, y), x)
 fun at_ip {s, x, y, d, f} =
-  (strvec_coords (x*2) y f, strvec_coords (x*2 + 1) y f)
+  let
+    val row = Vector.sub(f, y)
+  in
+    String.substring(row, (x*2), 2) handle Subscript => "  "
+  end
 
 fun do_cell cell state =
-  let val {s,x,y,d,f} = state in
-    case cell
-    of (#" ", #" ") => state
-     | (#"+", #"+") =>
-       let val (N p)::(N q)::s' = s in
-         {   s=(N (p+q))::s',   x=x, y=y, d=d, f=f }
-       end
-     | (#".", #"#") => advance state
-       (* ... *)
-     | ( n0 ,  n1 ) => if Char.isDigit n0 andalso Char.isDigit n1
-                       then
-                         let
-                           fun digit2int c = (ord c) - (ord #"0")
-                           val num = digit2int n0 * 10 + digit2int n1
-                         in
-                           {   s=(N num)::s,   x=x, y=y, d=d, f=f }
-                         end
-                       else raise WhlplashE "invalid command"
+  let
+    fun bin_op operator {s, x, y, d, f} =
+      case s
+        of (N a)::(N b)::s' =>
+            { s= (N (operator (a, b)))::s', x=x, y=y, d=d, f=f }
+         | _ => raise WhlplashE "arithmetic operator needs 2 numbers"
+    fun change_direction dir {s, x, y, d, f} =
+      { d=dir, s=s, x=x, y=y, f=f }
+    val {s,x,y,d,f} = state
+  in
+    if cell = ".@" then
+      Return (state)
+    else
+      Change
+      ( case cell
+        of "  " => state
+         | "++" => bin_op op + state
+         | "+-" => bin_op op - state
+         | "+*" => bin_op op * state
+         | "+/" => bin_op op / state
+         | ".#" => advance state
+         | ".^" => change_direction UP    state
+         | ".v" => change_direction DOWN  state
+         | ".<" => change_direction LEFT  state
+         | ".>" => change_direction RIGHT state
+         | any  => case Real.fromString any
+                     of SOME num => { s=(N num)::s, x=x, y=y, d=d, f=f }
+                      | NONE => (* todo: user-defined functions *)
+                                raise WhlplashE "unknown function"
+      )
   end
-fun step state = advance (do_cell (at_ip state) state)
+
+fun run_program state =
+  case do_cell (at_ip state) state
+    of Change state' => run_program (advance state')
+     | Return value  => value
 
 (* debug *)
 val sample_state =
-  { s= [N 0,N 0,N 0]
+  { s= [N 0.0,N 0.0,N 0.0]
   , x= 0, y= 0
   , d= RIGHT
-  , f= #[ "  0305++"
+  , f= #[ ".#.v0305++.#"
         , ".v.<"
         , ".>.@"
         ]
