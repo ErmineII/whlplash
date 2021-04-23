@@ -1,7 +1,7 @@
 
-load "Real";
+load "Int";
 
-datatype Value = N of real | Arr of Value vector
+datatype Value = N of int | Arr of Value vector
 type Stack = Value list
 
 datatype Dir = UP | DOWN | LEFT | RIGHT
@@ -50,9 +50,22 @@ fun do_cell cell state =
       case s
         of (N a)::(N b)::s' =>
             { s= (N (operator (a, b)))::s', x=x, y=y, d=d, f=f }
-         | _ => raise WhlplashE "arithmetic operator needs 2 numbers"
+         | _ => raise WhlplashE "binary operator needs 2 numbers"
+    fun un_op (operator : Value -> Value) {s, x, y, d, f} : State =
+      case s of a::s' => {s=(operator a)::s', x=x, y=y, d=d, f=f }
+              | [] => raise WhlplashE "unary operator needs an argument"
     fun change_direction dir {s, x, y, d, f} =
       { d=dir, s=s, x=x, y=y, f=f }
+    fun cond_change_direction dir state =
+      case #s state
+        of (N 0)::s' => state
+         |  anyval::s' =>
+            { s=s', x= #x state, y= #y state, f= #f state, d=dir }
+         |          [] => raise WhlplashE "conditional turn needs an argument"
+    fun negate v = case v of N n => N (~n)
+                           | any => raise WhlplashE "can only negate numbers"
+    fun bool2num b = if b then 1 else 0
+    val bool_not = N o bool2num o (fn v => v = N 0)
     val {s,x,y,d,f} = state
   in
     if cell = ".@" then
@@ -61,35 +74,57 @@ fun do_cell cell state =
       Change
       ( case cell
         of "  " => state
-         | "++" => bin_op op + state
-         | "+-" => bin_op op - state
-         | "+*" => bin_op op * state
-         | "+/" => bin_op op / state
          | ".#" => advance state
          | ".^" => change_direction UP    state
          | ".v" => change_direction DOWN  state
          | ".<" => change_direction LEFT  state
          | ".>" => change_direction RIGHT state
-         | any  => case Real.fromString any
+         | "++" => bin_op op + state
+         | "+-" => bin_op op - state
+         | "+*" => bin_op op * state
+         | "+/" => bin_op op div state
+         | "+!" => un_op negate state
+         | "?=" => bin_op (bool2num o op =) state
+         | "?<" => bin_op (bool2num o op <) state
+         | "?>" => bin_op (bool2num o op >) state
+         | "?[" => bin_op (bool2num o op <=) state
+         | "?]" => bin_op (bool2num o op >=) state
+         | "?!" => un_op bool_not state
+         | "?^" => cond_change_direction UP    state
+         | "?v" => cond_change_direction DOWN  state
+         | "?{" => cond_change_direction LEFT  state
+         | "?}" => cond_change_direction RIGHT state
+         | any  => case Int.fromString any
                      of SOME num => { s=(N num)::s, x=x, y=y, d=d, f=f }
                       | NONE => (* todo: user-defined functions *)
                                 raise WhlplashE "unknown function"
       )
   end
 
-fun run_program state =
+fun run_frame state =
   case do_cell (at_ip state) state
-    of Change state' => run_program (advance state')
+    of Change state' => run_frame (advance state')
      | Return value  => value
 
-(* debug *)
-val sample_state =
-  { s= [N 0.0,N 0.0,N 0.0]
-  , x= 0, y= 0
-  , d= RIGHT
-  , f= #[ ".#.v0305++.#"
-        , ".v.<"
-        , ".>.@"
-        ]
-  }
+(* val run_program : string vector -> State *)
+(* val split_fns : string vector ->
+                     (char * char, string vector) <some_mapping_thing> *)
 
+(*debug*)
+val samples =
+  [ { s= []
+    , x= 0, y= 0
+    , d= RIGHT
+    , f= #[ ".#.v0305++.#"
+          , ".v.<"
+          , ".>.#.@.<"
+          ]
+    }
+  , { s=[N 1]
+    , x=0, y=0
+    , d= RIGHT
+    , f= #[ "?v.@"
+          , ".@"
+          ]
+    }
+  ]
