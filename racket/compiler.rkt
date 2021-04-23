@@ -5,12 +5,43 @@
 
 (define movement-cmd-prefix #\.)
 
+(define types '(num char stack))
+
+(struct stack-effect (before after))
+
+(define (binary-op symbol effect)
+  (list symbol
+        (format "stack.push(stack.pop() ~a stack.pop());" effect)))
+
+(define binary-num-op-effect (stack-effect '(num num) '(num)))
+(define unary-num-op-effect (stack-effect '(num) '(num)))
+
+(define arithmetic-commands  
+  (hash
+   (map (lambda (op) (binary-op op binary-num-op-effect)) (list #\+ #\- #\* #\/))))
+
+(define stack-commands
+  (hash
+   ("foo" "bar")))
+
+(define command-groups
+  (hash
+   #\+ arithmetic-commands
+   #\: stack-commands))
+
+(define (get-cmd prefix suffix)
+  (define (read-char char)
+    (- (char->integer char) 48))
+  (if (char<=? #\0 prefix #\9)
+      (+ (* (read-char prefix) 10) (read-char suffix))
+      (hash-ref (hash-ref command-groups prefix) suffix)))
+
 ; An immutable vector of mutable vectors of all commands that can be reached (keys are (x y))
 (define (reachable-commands prog)
   
-  ; Adds a command to the accumulator, what else did you think it did?
-  (define (add-cmd acc cmd x y)
-    (vector-set! (vector-ref acc y) (/ x 2) cmd))
+  ; Adds a command to the vecumulator, what else did you think it did?
+  (define (add-cmd vec cmd x y)
+    (vector-set! (vector-ref vec y) (/ x 2) cmd))
   
   ; Wraps x horizontally, returns null if you try to make it wrap vertically
   (define (wrap x y should-err)
@@ -26,11 +57,12 @@
                             [#t x])])
           (list wrapped-x y))))
   
-  (define (helper acc dx dy x y)
-    (define (cardinal-cmd acc dx dy x y cmd-name)
-      (add-cmd acc x y cmd-name)
-      (let ([new-xy (wrap (+ dx x) (+ dy y))])
-        (helper acc dx dy (first new-xy) (second new-xy))))
+  (define (helper vec dx dy x y)
+    (define (cardinal-cmd vec dx dy x y cmd-name)
+      (add-cmd vec x y cmd-name)
+      (match (wrap (+ dx x) (+ dy y))
+        [(list new-x new-y)
+         (helper vec dx dy new-x new-y)]))
     
     (let* ([line (vector-ref prog y)]
            [prefix (string-ref line x)]
@@ -46,25 +78,8 @@
           ; todo do this
           ( '() ))))
   
-  (let* ([make-row (lambda (line) (make-vector (string-length line) '()))]
+  (let* ([make-row (lambda (line) (make-vector (/ (string-length line) 2) '()))]
          ; The accumulator initially has all cells as null/unused
-         [init-acc (map make-row prog)])
+         [init-vec (map make-row prog)])
     ; Start out in the top left corner, moving to the right 2 cells at a time
-    (helper init-acc 2 0 0 0)))
-
-(define (binary-op symbol)
-  (list symbol
-        (format "stack = stack.head ~s stack.tail.head;" symbol)))
-
-(define arithmetic-commands
-  (hash
-   (map binary-op (list "+" "-" "*" "/"))))
-
-(define stack-commands
-  (hash
-   ("foo" "bar")))
-
-(define command-groups
-  (hash
-   "+" arithmetic-commands
-   ":" stack-commands))
+    (helper init-vec 2 0 0 0)))
