@@ -6,6 +6,22 @@ https://github.com/ErmineII/whlplash
 
 [toc]
 
+## Programs #######
+
+A program is made up of (per source file):
+
+ - Optionally, a unnamed function without a header that will be run at program
+   start.
+ - Any number of headers of the form ` @fn` (a space, `@`, function name),
+   each followed by a function body.
+ - A function body is a positive number of lines, which are split into cells
+   two characters wide (a trailing single character is ignored). These lines
+   must each either start with a non-space character or have a space as a
+   second character.
+ - Any line may start with a space and a tilde `~`, then implementation-
+   specific directives.
+ - Any line may start with a space and a hash `#`. These lines will be ignored.
+
 ## Commands #######
 
 | p | s | description
@@ -16,9 +32,8 @@ https://github.com/ErmineII/whlplash
 |   |*d*| where *d* is in `><^v`, change direction
 |   |*m*| where *m* is in `|\/-`, mirror
 |   |`#`| jump forward over single instruction
-|   |`j`| relative jump to (2d offset on stack)
-|   |`J`| absolute jump
 |   |`@`| return/exit from program with exit code on top of stack or 0
+|   |`"`| literal string like `."text" ` or `."text with odd characters!"`
 |`+`|   | **Arithmetic**
 |   |`+`| add top two numbers
 |   |`-`| subtract top two numbers
@@ -78,7 +93,7 @@ It should probably be 2d to fit the theme.
 
 Probably not.
 
-### Wrapping
+### Wrapping ######
 
 Horizontal wrapping, but errors instead of vertical wrapping.
 

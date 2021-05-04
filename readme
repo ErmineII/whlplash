@@ -1,3 +1,9 @@
 
 Whlplash: A fungeoid optimized for speed.
 
+There are two implementations _in progress_:
+ - A compiler in Racket
+ - A compiler in SML (previously a fragment of an interpreter)
+
+You can find a command reference in  manual.md  .
+
