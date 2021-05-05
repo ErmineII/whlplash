@@ -12,19 +12,12 @@
 load "TextIO";
 load "Int";
 
-(***** FILE INPUT *****)
-
-val read_lines = String.tokens (fn c=>c = #"\n") o TextIO.inputAll
-
-(***** PARSING DECLARATIONS *****)
-
-type Field = string vector
-datatype Direction = UP | DN | LF | RT
-
-(* TODO *)
+exception SyntaxE of string;
 
 (***** IR *****)
 
+type Field = string vector
+datatype Direction = UP | DN | LF | RT
 type Coordinate = int * int
 type Place = Coordinate * Direction
 type Mark = bool * bool * bool * bool
@@ -142,6 +135,57 @@ fun parse (xy, dir) acc field : IR * IR_Field =
   parses to
   [00r Nop 10r, 10r Nop 11d, 11d Nop 01l, 01l Nop 00u, 00u Nop 10r]
 *)
+
+(***** PARSING DECLARATIONS *****)
+
+type Function = (char * char) * IR * string list
+type Program = Function list
+
+fun parse_lines (lines : string list) : Program =
+  let
+    fun lines2fn name lines pragmas : Function =
+      ( name
+      , case parse ((0,0), RT) [] (to_ir (Vector.fromList lines))
+          of (parsed_cmds_in_list : IR, unparsed : IR_Field)
+                  => parsed_cmds_in_list
+      , pragmas
+      )
+    val split = String.tokens (fn c => c = #" " orelse c = #"\t")
+    fun f (l, state) =
+          case state of ( name : char * char
+                        , lines : string list
+                        , functions : Function list
+                        , pragmas : string list
+                        ) =>
+          if String.size l >= 2 andalso String.sub(l, 0) = #" " then
+            case String.sub(l, 1)
+             of #"@" =>
+                ( (String.sub(l, 2), String.sub(l, 3))
+                    (* start a new function body named ^ *)
+                    handle Subscript =>
+                      raise SyntaxE "' @' requires function name"
+                , [] (* with no lines *)
+                , (lines2fn name lines pragmas) :: functions
+                    (* and parse the last one *)
+                , split (String.extract(l, 4, NONE))
+                    (* with optional pragmas *)
+                )
+              | #"#" => state (* a comment *)
+              | #"~" => ( name, lines, functions
+                        , split (String.extract(l,2,NONE)) )
+              | other => (name, l::lines, functions, pragmas)
+          else
+            (name, l::lines, functions, pragmas)
+    val parsed = foldl f ((#" ",#" "), [], [], []) lines
+  in
+    #3 (f (" @cd", parsed))
+    (* pretend we're defining a new function so f
+       will parse the last one defined *)
+  end
+
+(***** FILE INPUT *****)
+
+val read_lines = String.fields (fn c=>c = #"\n") o TextIO.inputAll
 
 (*** convenience for testing
 
