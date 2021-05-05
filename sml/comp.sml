@@ -10,6 +10,7 @@
 *)
 
 load "TextIO";
+load "Int";
 
 (***** FILE INPUT *****)
 
@@ -50,7 +51,6 @@ val to_ir : Field -> IR_Field =
 
 datatype IR_Cmd
   = Call of (char * char)
-  | Primitive of (char * char)
   | PushNum of int
   | If of Place
   | Nop
@@ -76,28 +76,58 @@ fun setmark dir (u, d, l, r) B = case dir
   | LF => (u, d, B, r)
   | RT => (u, d, l, B)
 
-fun advance f (x, y) d =
+fun advance f d (x, y) =
   let val (dx, dy) = delta d in
-    ( (x+dx) mod (size (Vector.sub(f, y)) div 2)
+    ( (x+dx) mod Vector.length (Vector.sub(f, y))
     , y+dy )
   end
 
-fun get_cell f (x, y) =
-  let
-    val row = Vector.sub(f, y)
-  in
-    SOME (Vector.sub(row, x)) handle Subscript => NONE
-  end
+fun get_cell f (x, y) : IR_Cell =
+  case Vector.sub(f, y) of row => (Vector.sub(row, x))
+      handle Subscript => {src=(#" ", #" "), mrk=(false, false, false, false)}
+fun set_cell f (x, y) v =
+  Vector.update(f, y, Vector.update(Vector.sub(f, y), x, v))
+
+fun ch2dir c d =
+  case c
+   of #"^" => UP
+    | #"v" => DN
+    | #"<" => LF
+    | #">" => RT
+    | #"{" => LF
+    | #"}" => RT
+    | #"[" => LF
+    | #"]" => RT
+    | #"/"  => (case d of UP => RT | DN => LF | LF => DN | RT => UP)
+    | #"\\" => (case d of UP => LF | DN => RT | LF => UP | RT => DN)
+    | _ => raise Match
 
 (* val parse : Place -> IR -> IR_Field -> IR * IR_Field *)
-fun parse (xy, dir) acc field : IR =
-  case get_cell field xy
-   of NONE => parse (advance field xy dir, dir) acc field
-    | SOME {src, mrk} =>
-      if getmark dir mrk then (acc, field) (* if already traversed, done *)
-      else
-        case src
-         of (#".", #"@") => 
+fun parse (xy, dir) acc field : IR * IR_Field =
+  case get_cell field xy of {src, mrk} =>
+    if getmark dir mrk then (acc, field) (* if already traversed, done *)
+    else let
+      val field = set_cell field xy {src=src, mrk=(setmark dir mrk true)}
+      val xy' = advance field dir xy
+    in
+      case src
+       of (#".", #"@") => (((xy, dir), Return, (xy, dir))::acc, field)
+        | (#".", #"#") => let val xy'' = advance field dir xy' in
+                            parse (xy'', dir)
+                                  (((xy, dir), Nop, (xy'', dir))::acc) field
+                          end
+        | (#".", dirc) => (case fn d =>
+                              case advance field d xy of xy' =>
+                                parse (xy', d)
+                                      (((xy, dir), Nop, (xy', d))::acc) field
+                            of turn =>
+                              turn (ch2dir dirc dir))
+        | (#" ", #" ") => parse (xy', dir)
+                                (((xy, dir), Nop, (xy', dir))::acc) field
+        (* TODO: More movement commands *)
+        | _ => parse (xy', dir)
+                     (((xy, dir), Call src, (xy, dir))::acc) field
+    end
 
 (*
   #["~:?!?v01+-"
@@ -106,5 +136,22 @@ fun parse (xy, dir) acc field : IR =
   [00r Primitive ~: 10r, 10r Primitive ?! 20r, 20r If 21d 30r,
    30r PushNum 01 40r, 40r Primitive +- 00r, 21d Nop 11l, 11l Nop 01l,
    01l Return 21l]
+
+  #[".>.v"
+    ".^.<"]
+  parses to
+  [00r Nop 10r, 10r Nop 11d, 11d Nop 01l, 01l Nop 00u, 00u Nop 10r]
 *)
+
+(*** convenience for testing
+
+fun testread (i : string vector) : IR * IR_Field =
+  parse ((0,0), RT) [] (to_ir i)
+val s = #[
+  #[".>.v",
+    ".^.<"],
+  #["  .@"]
+]
+
+***)
 
