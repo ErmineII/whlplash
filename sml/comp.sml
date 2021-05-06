@@ -73,13 +73,31 @@ fun advance f d (x, y) =
   let val (dx, dy) = delta d in
     ( (x+dx) mod Vector.length (Vector.sub(f, y))
     , y+dy )
+    handle Subscript => raise SyntaxE "off the map"
   end
 
+val default_cell = {src=(#" ", #" "), mrk=(false, false, false, false)}
 fun get_cell f (x, y) : IR_Cell =
   case Vector.sub(f, y) of row => (Vector.sub(row, x))
-      handle Subscript => {src=(#" ", #" "), mrk=(false, false, false, false)}
+      handle Subscript => default_cell
 fun set_cell f (x, y) v =
-  Vector.update(f, y, Vector.update(Vector.sub(f, y), x, v))
+  let fun update_padded(vec, x, v, padding) =
+    Vector.tabulate ( x+1,
+      fn i => if i < Vector.length vec then Vector.sub(vec, i)
+              else if i = x then v else padding
+    )
+  in
+    Vector.update(f, y,
+      Vector.update(Vector.sub(f, y), x, v)
+        handle Subscript =>
+          update_padded( Vector.sub(f, y), x, v, default_cell)
+    )
+  end
+
+(*
+fun print_ir_cell {src,mrk} = (print_mrk mrk; 
+val print_ir_field = Vector.app (fn row => (Vector.app print_ir_cell row; print "\n"))
+*)
 
 fun ch2dir c d =
   case c
@@ -145,7 +163,7 @@ fun parse_lines (lines : string list) : Program =
   let
     fun lines2fn name lines pragmas : Function =
       ( name
-      , case parse ((0,0), RT) [] (to_ir (Vector.fromList lines))
+      , case parse ((0,0), RT) [] (to_ir (Vector.fromList (List.rev lines)))
           of (parsed_cmds_in_list : IR, unparsed : IR_Field)
                   => parsed_cmds_in_list
       , pragmas
