@@ -28,6 +28,8 @@ type IR_Cell =
   }
 type IR_Field = IR_Cell vector vector
 
+fun cmd2str (a,b) = String.str a ^ String.str b
+
 val to_ir : Field -> IR_Field =
     Vector.map
       let fun pairs acc (a::b::rest) =
@@ -136,6 +138,23 @@ fun parse (xy, dir) acc field : IR * IR_Field =
         | (#" ", #" ") => parse (xy', dir)
                                 (((xy, dir), Nop, (xy', dir))::acc) field
         (* TODO: More movement commands *)
+        | (#"?", dirc) => (*if String.isSubstring (String.str dirc) "{}^v/\\"*)
+                         (
+                          let
+                            val branchdir = ch2dir dirc dir
+                            val branchxy = advance field branchdir xy
+                            val (condbranchacc, field') =
+                              parse (branchxy, branchdir) acc field
+                          in
+                            parse (xy', dir)
+                              ( ( (xy, dir)
+                                , If (branchxy, branchdir)
+                                , (xy', dir)
+                                )::condbranchacc ) field
+                          end
+                            handle Match => raise SyntaxE
+                              ("Not a valid condition: " ^ cmd2str src)
+                         )
         | _ => parse (xy', dir)
                      (((xy, dir), Call src, (xy, dir))::acc) field
     end
@@ -153,6 +172,10 @@ fun parse (xy, dir) acc field : IR * IR_Field =
   parses to
   [00r Nop 10r, 10r Nop 11d, 11d Nop 01l, 01l Nop 00u, 00u Nop 10r]
 *)
+
+(***** SECOND IR *****)
+
+(* TODO *)
 
 (***** PARSING DECLARATIONS *****)
 
@@ -205,15 +228,13 @@ fun parse_lines (lines : string list) : Program =
 
 val read_lines = String.fields (fn c=>c = #"\n") o TextIO.inputAll
 
-(*** convenience for testing
+(***** CODE GENERATION *****)
 
-fun testread (i : string vector) : IR * IR_Field =
-  parse ((0,0), RT) [] (to_ir i)
-val s = #[
-  #[".>.v",
-    ".^.<"],
-  #["  .@"]
-]
+fun function_name (#" ", #" ") = "main"
+  | function_name (   a,    b) = "w_f_" ^ String.implode [a,b]
 
-***)
+fun valid_num (a,b) = Char.isDigit a andalso Char.isDigit b
+fun valid_name (a,b) = Char.isAlphaNum a
+               andalso (not (valid_num (a,b)))
+               andalso Char.isAlphaNum b
 
