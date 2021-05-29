@@ -14,7 +14,7 @@ load "Int";
 
 exception SyntaxE of string;
 
-(***** IR *****)
+(***** AST *****)
 
 type Field = string vector
 datatype Direction = UP | DN | LF | RT
@@ -22,15 +22,15 @@ type Coordinate = int * int
 type Place = Coordinate * Direction
 type Mark = bool * bool * bool * bool
 
-type IR_Cell =
+type AST_Cell =
   { src: char * char
   , mrk: Mark
   }
-type IR_Field = IR_Cell vector vector
+type AST_Field = AST_Cell vector vector
 
 fun cmd2str (a,b) = String.str a ^ String.str b
 
-val to_ir : Field -> IR_Field =
+val to_ast : Field -> AST_Field =
     Vector.map
       let fun pairs acc (a::b::rest) =
                 pairs ( { src = (a,b)
@@ -42,15 +42,16 @@ val to_ir : Field -> IR_Field =
         Vector.fromList o List.rev o pairs [] o String.explode
       end
 
-(***** PATH TRACING *****)
+(***** PARSING *****)
 
-datatype IR_Cmd
+datatype AST_Cmd
   = Call of (char * char)
   | PushNum of int
   | If of Place
+  | IfRet
   | Nop
   | Return
-type IR = (Place * IR_Cmd * Place) list
+type AST = (Place * AST_Cmd * Place) list
 
 fun delta UP = ( 0,~1)
   | delta DN = ( 0, 1)
@@ -79,7 +80,7 @@ fun advance f d (x, y) =
   end
 
 val default_cell = {src=(#" ", #" "), mrk=(false, false, false, false)}
-fun get_cell f (x, y) : IR_Cell =
+fun get_cell f (x, y) : AST_Cell =
   case Vector.sub(f, y) of row => (Vector.sub(row, x))
       handle Subscript => default_cell
 fun set_cell f (x, y) v =
@@ -96,11 +97,6 @@ fun set_cell f (x, y) v =
     )
   end
 
-(*
-fun print_ir_cell {src,mrk} = (print_mrk mrk; 
-val print_ir_field = Vector.app (fn row => (Vector.app print_ir_cell row; print "\n"))
-*)
-
 fun ch2dir c d =
   case c
    of #"^" => UP
@@ -115,8 +111,8 @@ fun ch2dir c d =
     | #"\\" => (case d of UP => LF | DN => RT | LF => UP | RT => DN)
     | _ => raise Match
 
-(* val parse : Place -> IR -> IR_Field -> IR * IR_Field *)
-fun parse (xy, dir) acc field : IR * IR_Field =
+(* val parse : Place -> AST -> AST_Field -> AST * AST_Field *)
+fun parse (xy, dir) acc field : AST * AST_Field =
   case get_cell field xy of {src, mrk} =>
     if getmark dir mrk then (acc, field) (* if already traversed, done *)
     else let
@@ -125,24 +121,33 @@ fun parse (xy, dir) acc field : IR * IR_Field =
     in
       case src
        of (#".", #"@") => (((xy, dir), Return, (xy, dir))::acc, field)
-        | (#".", #"#") => let val xy'' = advance field dir xy' in
-                            parse (xy'', dir)
-                                  (((xy, dir), Nop, (xy'', dir))::acc) field
-                          end
-        | (#".", dirc) => (case fn d =>
-                              case advance field d xy of xy' =>
-                                parse (xy', d)
-                                      (((xy, dir), Nop, (xy', d))::acc) field
-                            of turn =>
-                              turn (ch2dir dirc dir))
-        | (#" ", #" ") => parse (xy', dir)
-                                (((xy, dir), Nop, (xy', dir))::acc) field
+        | (#".", #"#") =>
+            let val xy'' = advance field dir xy' in
+              parse (xy'', dir) (((xy, dir), Nop, (xy'', dir))::acc) field
+            end
+        | (#".", dirc) =>
+            let
+              val dir' = ch2dir dirc dir
+              val xy' = advance field dir' xy
+            in
+              parse (xy', dir') (((xy, dir), Nop, (xy', dir'))::acc) field
+            end
+        | (#" ", #" ") =>
+            parse (xy', dir) (((xy, dir), Nop, (xy', dir))::acc) field
         (* TODO: More movement commands *)
-        | (#"?", dirc) => (*if String.isSubstring (String.str dirc) "{}^v/\\"*)
-                         (
+        | (#"?", #"@") =>
+            parse (xy', dir) (((xy, dir), IfRet, (xy', dir))::acc) field
+        | (#"?", dirc) =>
+            (*if String.isSubstring (String.str dirc) "{}^v/\\"*)
                           let
-                            val branchdir = ch2dir dirc dir
+                            val branchdir = if dirc = #"#" then dir
+                                            else ch2dir dirc dir
+                              handle Match => raise SyntaxE
+                                ("Not a valid condition: " ^ cmd2str src)
                             val branchxy = advance field branchdir xy
+                            val branchxy = if dirc = #"#" then
+                                             advance field branchdir branchxy
+                                           else branchxy
                             val (condbranchacc, field') =
                               parse (branchxy, branchdir) acc field
                           in
@@ -150,11 +155,8 @@ fun parse (xy, dir) acc field : IR * IR_Field =
                               ( ( (xy, dir)
                                 , If (branchxy, branchdir)
                                 , (xy', dir)
-                                )::condbranchacc ) field
+                                )::condbranchacc ) field'
                           end
-                            handle Match => raise SyntaxE
-                              ("Not a valid condition: " ^ cmd2str src)
-                         )
         | _ => parse (xy', dir)
                      (((xy, dir), Call src, (xy, dir))::acc) field
     end
@@ -179,20 +181,25 @@ fun parse (xy, dir) acc field : IR * IR_Field =
 
 (***** PARSING DECLARATIONS *****)
 
-type Function = (char * char) * IR * string list
+type Function = (char * char) * AST * string list
 type Program = Function list
 
 fun parse_lines (lines : string list) : Program =
   let
     fun lines2fn name lines pragmas : Function =
       ( name
-      , case parse ((0,0), RT) [] (to_ir (Vector.fromList (List.rev lines)))
-          of (parsed_cmds_in_list : IR, unparsed : IR_Field)
+      , case parse ((0,0), RT) [] (to_ast (Vector.fromList (List.rev lines)))
+          of (parsed_cmds_in_list : AST, unparsed : AST_Field)
                   => parsed_cmds_in_list
       , pragmas
       )
     val split = String.tokens (fn c => c = #" " orelse c = #"\t")
-    fun f (l, state) =
+    fun f (l, state) : ( (char * char) (* function being parsed *)
+                       * string list (* function's lines built up backwards *)
+                       * Function list (* all functions parsed (backwards) *)
+                       * string list (* compiler directives for
+                                        the current function *)
+                       ) =
           case state of ( name : char * char
                         , lines : string list
                         , functions : Function list
