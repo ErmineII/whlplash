@@ -1,12 +1,12 @@
 
 (*
-  read lines
-  split functions
-  trace paths
-  make structured
-  optimizations?
-  code generation
-  file output
+ [x] read lines
+ [x] split functions
+ [x] trace paths
+ [ ] make structured
+ [ ] optimizations?
+ [ ] code generation
+ [ ] file output
 *)
 
 load "TextIO";
