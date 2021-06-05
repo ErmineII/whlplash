@@ -1,0 +1,7 @@
+ # this is the main function
+.>fn.@
+ @fn example pragma
+ # This is an example function
+.v.@                                        .>.#
+  I can direct control flow around comments
+.<                                          .^
