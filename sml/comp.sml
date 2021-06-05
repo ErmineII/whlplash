@@ -4,6 +4,7 @@
  [x] split functions
  [x] trace paths
  [ ] make structured
+ [ ] type checking
  [ ] optimizations?
  [ ] code generation
  [ ] file output
@@ -45,13 +46,13 @@ val to_ast : Field -> AST_Field =
 (***** PARSING *****)
 
 datatype AST_Cmd
-  = Call of (char * char)
-  | PushNum of int
-  | If of Place
-  | IfRet
-  | Nop
+  = Call of (char * char) * Place
+  | PushNum of int * Place
+  | If of Place * Place
+  | IfRet of Place
+  | Nop of Place
   | Return
-type AST = (Place * AST_Cmd * Place) list
+type AST = (Place * AST_Cmd) list
 
 fun delta UP = ( 0,~1)
   | delta DN = ( 0, 1)
@@ -120,45 +121,43 @@ fun parse (xy, dir) acc field : AST * AST_Field =
       val xy' = advance field dir xy
     in
       case src
-       of (#".", #"@") => (((xy, dir), Return, (xy, dir))::acc, field)
+       of (#".", #"@") => (((xy, dir), Return)::acc, field)
         | (#".", #"#") =>
             let val xy'' = advance field dir xy' in
-              parse (xy'', dir) (((xy, dir), Nop, (xy'', dir))::acc) field
+              parse (xy'', dir) (((xy, dir), Nop (xy'', dir))::acc) field
             end
         | (#".", dirc) =>
             let
               val dir' = ch2dir dirc dir
               val xy' = advance field dir' xy
             in
-              parse (xy', dir') (((xy, dir), Nop, (xy', dir'))::acc) field
+              parse (xy', dir') (((xy, dir), Nop (xy', dir'))::acc) field
             end
         | (#" ", #" ") =>
-            parse (xy', dir) (((xy, dir), Nop, (xy', dir))::acc) field
+            parse (xy', dir) (((xy, dir), Nop (xy', dir))::acc) field
         (* TODO: More movement commands *)
         | (#"?", #"@") =>
-            parse (xy', dir) (((xy, dir), IfRet, (xy', dir))::acc) field
+            parse (xy', dir) (((xy, dir), IfRet (xy', dir))::acc) field
         | (#"?", dirc) =>
             (*if String.isSubstring (String.str dirc) "{}^v/\\"*)
-                          let
-                            val branchdir = if dirc = #"#" then dir
-                                            else ch2dir dirc dir
-                              handle Match => raise SyntaxE
-                                ("Not a valid condition: " ^ cmd2str src)
-                            val branchxy = advance field branchdir xy
-                            val branchxy = if dirc = #"#" then
-                                             advance field branchdir branchxy
-                                           else branchxy
-                            val (condbranchacc, field') =
-                              parse (branchxy, branchdir) acc field
-                          in
-                            parse (xy', dir)
-                              ( ( (xy, dir)
-                                , If (branchxy, branchdir)
-                                , (xy', dir)
-                                )::condbranchacc ) field'
-                          end
-        | _ => parse (xy', dir)
-                     (((xy, dir), Call src, (xy, dir))::acc) field
+            let
+              val branchdir = if dirc = #"#" then dir else ch2dir dirc dir
+                handle Match => raise SyntaxE
+                  ("Not a valid condition: " ^ cmd2str src)
+              val branchxy = advance field branchdir xy
+              val branchxy = if dirc = #"#" then
+                               advance field branchdir branchxy
+                             else branchxy
+              val (condbranchacc, field') =
+                parse (branchxy, branchdir) acc field
+            in
+              parse (xy', dir)
+                ( ( (xy, dir)
+                  , If ((branchxy, branchdir), (xy', dir))
+                  )::condbranchacc ) field'
+            end
+        | _ =>
+            parse (xy', dir) (((xy, dir), Call (src, (xy, dir)))::acc) field
     end
 
 (*
@@ -237,6 +236,12 @@ val read_lines = String.fields (fn c=>c = #"\n") o TextIO.inputAll
 
 (***** CODE GENERATION *****)
 
+(* w_f function
+   w_l label
+   w_t type
+   w_v variable
+ *)
+
 fun function_name (#" ", #" ") = "main"
   | function_name (   a,    b) = "w_f_" ^ String.implode [a,b]
 
@@ -244,4 +249,13 @@ fun valid_num (a,b) = Char.isDigit a andalso Char.isDigit b
 fun valid_name (a,b) = Char.isAlphaNum a
                andalso (not (valid_num (a,b)))
                andalso Char.isAlphaNum b
+
+fun place_name ((x,y), dir) =
+  let fun showdir UP = "UP"
+        | showdir DN = "DN"
+        | showdir LF = "LF"
+        | showdir RT = "RT"
+  in
+    "w_l_" ^ showdir dir ^ "_" ^ Int.toString x ^ Int.toString y
+  end
 
